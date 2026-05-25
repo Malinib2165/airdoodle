@@ -1,0 +1,1131 @@
+  <!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Air Doodle — Draw with your finger in the air</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@300;400&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --pink: #ff2d9b;
+      --cyan: #00eaff;
+      --green: #aaff00;
+      --amber: #ffaa00;
+      --white: #ffffff;
+      --bg: #1a0007; /* deeper maroon base */
+      --surface: rgba(255,255,255,0.05);
+      --border: rgba(255,255,255,0.1);
+    }
+
+    html, body {
+      height: 100%;
+      background: #0d0004; /* darker base for better contrast */
+      color: #fff;
+      font-family: 'Times New Roman', Times, serif;
+      overflow: hidden;
+    }
+
+    /* ── ANIMATED BACKGROUND ── */
+    #bg-container {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      background: var(--bg);
+      overflow: hidden;
+    }
+
+    .blob {
+      position: absolute;
+      width: 70vw;
+      height: 70vw;
+      border-radius: 50%;
+      filter: blur(100px);
+      opacity: 0.45; /* increased blob visibility */
+      animation: float 25s infinite alternate ease-in-out;
+    }
+
+    .blob-1 {
+      background: var(--pink);
+      top: -20%; left: -10%;
+    }
+
+    .blob-2 {
+      background: var(--cyan);
+      bottom: -20%; right: -10%;
+      animation-duration: 35s;
+      animation-delay: -7s;
+    }
+
+    .blob-3 {
+      background: var(--amber);
+      top: 30%; left: 30%;
+      width: 40vw; height: 40vw;
+      animation-duration: 20s;
+      animation-delay: -3s;
+    }
+
+    @keyframes float {
+      0% { transform: translate(0, 0) scale(1); }
+      33% { transform: translate(8vw, 12vh) scale(1.2); }
+      66% { transform: translate(-10vw, 5vh) scale(0.8); }
+      100% { transform: translate(5vw, -8vh) scale(1); }
+    }
+
+    /* ── LANDING SCREEN ── */
+    #landing {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      background: rgba(26, 0, 7, 0.4);
+      backdrop-filter: blur(20px);
+      transition: opacity 0.6s ease, visibility 0.6s;
+    }
+    #landing.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+
+    .landing-glow {
+      position: absolute;
+      width: 600px; height: 600px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255,45,155,0.18) 0%, transparent 70%);
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      animation: pulse 4s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:0.6;transform:translate(-50%,-50%) scale(1)} 50%{opacity:1;transform:translate(-50%,-50%) scale(1.1)} }
+
+    .logo {
+      font-family: 'Times New Roman', Times, serif;
+      font-weight: 800;
+      font-size: clamp(3rem, 10vw, 6rem);
+      letter-spacing: -2px;
+      background: linear-gradient(135deg, #ff2d9b, #00eaff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      position: relative;
+      z-index: 1;
+    }
+
+    .tagline {
+      font-size: 1.1rem;
+      color: rgba(255,255,255,0.45);
+      font-weight: 300;
+      letter-spacing: 0.05em;
+      margin-top: 0.5rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    .how-to {
+      display: flex;
+      gap: 2rem;
+      margin: 2.5rem 0;
+      position: relative;
+      z-index: 1;
+    }
+    .how-step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      color: rgba(255,255,255,0.5);
+      text-align: center;
+      max-width: 100px;
+    }
+    .how-icon {
+      font-size: 2rem;
+      filter: drop-shadow(0 0 8px rgba(255,45,155,0.5));
+    }
+
+    .start-btn {
+      position: relative;
+      font-family: 'Times New Roman', Times, serif;
+      z-index: 1;
+      background: linear-gradient(135deg, #ff2d9b, #c800ff);
+      border: none;
+      color: #fff;
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 1rem;
+      letter-spacing: 0.05em;
+      padding: 1rem 2.5rem;
+      border-radius: 100px;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 0 30px rgba(255,45,155,0.4);
+    }
+    .start-btn:hover {
+      transform: scale(1.04);
+      box-shadow: 0 0 50px rgba(255,45,155,0.6);
+    }
+
+    /* ── APP SCREEN ── */
+    #app {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #cam-wrapper {
+      position: relative;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    #webcam {
+      position: absolute;
+      inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+      opacity: 0.72;
+    }
+
+    #draw-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%; height: 100%;
+    }
+
+    /* ── STATUS PILL ── */
+    #status-pill {
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(12px);
+      border: 0.5px solid var(--border);
+      border-radius: 100px;
+      padding: 6px 16px;
+      font-size: 13px;
+      color: rgba(255,255,255,0.7);
+      white-space: nowrap;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .dot-indicator {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #555;
+      transition: background 0.3s;
+    }
+    .dot-indicator.active { background: var(--pink); box-shadow: 0 0 6px var(--pink); }
+    .dot-indicator.drawing { background: var(--cyan); box-shadow: 0 0 6px var(--cyan); animation: blink 0.8s infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    /* ── TOOLBAR ── */
+    #toolbar {
+      background: rgba(5,5,8,0.85);
+      backdrop-filter: blur(20px);
+      border-top: 0.5px solid var(--border);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .color-btn {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: transform 0.15s, border-color 0.15s;
+      position: relative;
+    }
+    .color-btn::after {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      transition: border-color 0.15s;
+    }
+    .color-btn.active::after { border-color: rgba(255,255,255,0.6); }
+    .color-btn:hover { transform: scale(1.15); }
+
+    .sep { width: 1px; height: 28px; background: var(--border); }
+
+    .tool-btn {
+      background: var(--surface);
+      border: 0.5px solid var(--border);
+      color: rgba(255,255,255,0.8);
+      font-family: 'Times New Roman', Times, serif;
+      font-size: 13px;
+      padding: 7px 16px;
+      border-radius: 100px;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.15s;
+      white-space: nowrap;
+    }
+    .tool-btn:hover { background: rgba(255,255,255,0.1); transform: scale(1.03); }
+    .tool-btn:active { transform: scale(0.97); }
+
+    /* Pulse to help locate the new feature */
+    #flashcard-toggle.pulse {
+      animation: btn-pulse 2s infinite;
+    }
+    @keyframes btn-pulse { 0% { box-shadow: 0 0 0 0 rgba(0, 234, 255, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(0, 234, 255, 0); } 100% { box-shadow: 0 0 0 0 rgba(0, 234, 255, 0); } }
+
+    .size-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.4);
+    }
+    input[type=range] {
+      -webkit-appearance: none;
+      width: 80px;
+      height: 3px;
+      background: var(--border);
+      border-radius: 10px;
+      outline: none;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: var(--pink);
+      cursor: pointer;
+      box-shadow: 0 0 6px var(--pink);
+    }
+
+    /* ── CURSOR ── */
+    #cursor-dot {
+      position: absolute;
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      transition: opacity 0.2s;
+      z-index: 20;
+      display: none;
+    }
+
+    /* ── FLASHCARD UI ── */
+    #flashcard-panel {
+      position: absolute;
+      top: 80px;
+      right: 20px;
+      width: 260px;
+      z-index: 15;
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+      perspective: 1000px;
+    }
+    #flashcard-panel.visible { display: flex; }
+
+    .card {
+      width: 100%;
+      height: 160px;
+      position: relative;
+      transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+      transform-style: preserve-3d;
+      cursor: pointer;
+    }
+    .card.flipped { transform: rotateY(180deg); }
+
+    .card-face {
+      position: absolute;
+      width: 100%; height: 100%;
+      backface-visibility: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(20, 0, 5, 0.95); /* darker card for better readability */
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 20px;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    }
+    .card-front { color: #fff; font-family: 'Syne', sans-serif; font-weight: 700; }
+    .card-back { transform: rotateY(180deg); color: var(--cyan); font-size: 3rem; }
+    .card-back .tool-btn { font-size: 14px; margin-top: 15px; background: rgba(255,255,255,0.1); border-color: var(--cyan); }
+    
+    .card-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.5; margin-bottom: 8px; }
+
+    .card-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(0,0,0,0.3);
+      padding: 8px 12px;
+      border-radius: 100px;
+      backdrop-filter: blur(10px);
+      border: 0.5px solid var(--border);
+    }
+    .card-nav-btn { background: none; border: none; color: #fff; cursor: pointer; padding: 4px 8px; font-size: 14px; opacity: 0.7; transition: opacity 0.2s; }
+    .card-nav-btn:hover { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<!-- ANIMATED BACKGROUND -->
+<div id="bg-container">
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+</div>
+
+<!-- LANDING -->
+<div id="landing">
+  <div class="landing-glow"></div>
+  <div class="logo">Air Doodle</div>
+  <div class="tagline">draw in the air using your finger</div>
+  <div class="how-to">
+    <div class="how-step">
+      <span class="how-icon">☝️</span>
+      <span>Point index finger up to draw</span>
+    </div>
+    <div class="how-step">
+      <span class="how-icon">✊</span>
+      <span>Make a fist to pause</span>
+    </div>
+    <div class="how-step">
+      <span class="how-icon">🎨</span>
+      <span>Pick colors below</span>
+    </div>
+    <div class="how-step">
+      <span class="how-icon">🖐️</span>
+      <span>Open palm to increase or decrease size of canvas</span>
+    </div>
+    <div class="how-step">
+      <span class="how-icon">👌</span>
+      <span>Close palm to erase the canvas</span>
+    </div>
+  </div>
+  <button class="start-btn" id="start-btn">Start Drawing →</button>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div id="cam-wrapper">
+    <video id="webcam" autoplay playsinline muted></video>
+    <canvas id="draw-canvas"></canvas>
+    <div id="cursor-dot"></div>
+    <div id="status-pill">
+      <div class="dot-indicator" id="dot"></div>
+      <span id="status-text">Starting camera…</span>
+    </div>
+
+    <!-- FLASHCARD PANEL -->
+    <div id="flashcard-panel">
+      <div class="card" id="card-obj">
+        <div class="card-face card-front">
+          <div class="card-label">Challenge</div>
+          <div id="card-question">Draw a Happy Face</div>
+        </div>
+        <div class="card-face card-back">
+          <div id="card-answer">😊</div>
+          <button class="tool-btn" id="card-complete">Done! ✨</button>
+        </div>
+      </div>
+      <div class="card-controls">
+        <button class="card-nav-btn" id="card-prev">←</button>
+        <span id="card-index" style="font-size: 12px; opacity: 0.6;">1 / 5</span>
+        <button class="card-nav-btn" id="card-next">→</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toolbar">
+    <div class="color-btn active" style="background:#ff2d9b;box-shadow:0 0 8px #ff2d9b44" data-color="#ff2d9b" data-shadow="#ff2d9b"></div>
+    <div class="color-btn" style="background:#00eaff;box-shadow:0 0 8px #00eaff44" data-color="#00eaff" data-shadow="#00eaff"></div>
+    <div class="color-btn" style="background:#c800ff;box-shadow:0 0 8px #c800ff44" data-color="#c800ff" data-shadow="#c800ff"></div>
+    <div class="color-btn" style="background:#aaff00;box-shadow:0 0 8px #aaff0044" data-color="#aaff00" data-shadow="#aaff00"></div>
+    <div class="color-btn" style="background:#ffaa00;box-shadow:0 0 8px #ffaa0044" data-color="#ffaa00" data-shadow="#ffaa00"></div>
+    <div class="color-btn" style="background:#ffffff;box-shadow:0 0 8px #ffffff33" data-color="#ffffff" data-shadow="#ffffff"></div>
+
+    <div class="color-btn" style="background:#ff3b30;box-shadow:0 0 8px #ff3b3044" data-color="#ff3b30" data-shadow="#ff3b30"></div>
+    <div class="color-btn" style="background:#ff6b00;box-shadow:0 0 8px #ff6b0044" data-color="#ff6b00" data-shadow="#ff6b00"></div>
+    <div class="color-btn" style="background:#ffd60a;box-shadow:0 0 8px #ffd60a44" data-color="#ffd60a" data-shadow="#ffd60a"></div>
+    <div class="color-btn" style="background:#34c759;box-shadow:0 0 8px #34c75944" data-color="#34c759" data-shadow="#34c759"></div>
+    <div class="color-btn" style="background:#00c7be;box-shadow:0 0 8px #00c7be44" data-color="#00c7be" data-shadow="#00c7be"></div>
+    <div class="color-btn" style="background:#0a84ff;box-shadow:0 0 8px #0a84ff44" data-color="#0a84ff" data-shadow="#0a84ff"></div>
+    <div class="color-btn" style="background:#5856d6;box-shadow:0 0 8px #5856d644" data-color="#5856d6" data-shadow="#5856d6"></div>
+    <div class="color-btn" style="background:#af52de;box-shadow:0 0 8px #af52de44" data-color="#af52de" data-shadow="#af52de"></div>
+    <div class="color-btn" style="background:#ff2d55;box-shadow:0 0 8px #ff2d5544" data-color="#ff2d55" data-shadow="#ff2d55"></div>
+    <div class="color-btn" style="background:#b7b7b7;box-shadow:0 0 8px #b7b7b744" data-color="#b7b7b7" data-shadow="#b7b7b7"></div>
+
+    <div class="sep"></div>
+    <div class="size-wrap">
+      <span>Size</span>
+      <input type="range" id="size-slider" min="1" max="5" value="3" step="1">
+    </div>
+    <div class="sep"></div>
+    <button class="tool-btn" id="clear-btn">✕ Clear</button>
+    <button class="tool-btn" id="undo-btn">↶ Undo</button>
+    <button class="tool-btn pulse" id="flashcard-toggle">🗂️ Cards</button>
+    <button class="tool-btn" id="save-btn">↓ Save</button>
+
+    <!-- TEXT (hands-only) -->
+    <div class="sep"></div>
+    <button class="tool-btn" id="text-happy-bday">🎉 Happy Birthday</button>
+    <button class="tool-btn" id="text-happy-diwali">🪔 Happy Diwali</button>
+    <button class="tool-btn" id="text-eid-mubarak">🌙 Eid Mubarak</button>
+    <button class="tool-btn" id="text-happy-suffix">😊 Happy + suffix</button>
+  </div>
+</div>
+
+
+<script>
+const video = document.getElementById('webcam');
+const canvas = document.getElementById('draw-canvas');
+const ctx = canvas.getContext('2d');
+const statusText = document.getElementById('status-text');
+const dot = document.getElementById('dot');
+const cursorDot = document.getElementById('cursor-dot');
+const landing = document.getElementById('landing');
+const sizeSlider = document.getElementById('size-slider');
+
+let color = '#ff2d9b';
+let brushSize = 3;
+let trails = [];
+let currentTrail = null;
+let lastX = null, lastY = null;
+let colorCooldown = 0;
+let isErasing = false;
+let camStarted = false;
+const successSound = new Audio('https://cdn.pixabay.com/audio/2021/08/04/audio_0625c1539c.mp3');
+let particles = [];
+
+// Color buttons
+document.querySelectorAll('.color-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    color = btn.dataset.color;
+    cursorDot.style.background = color;
+    cursorDot.style.boxShadow = `0 0 12px ${color}`;
+  });
+});
+
+sizeSlider.addEventListener('input', () => { brushSize = +sizeSlider.value; });
+
+document.getElementById('clear-btn').addEventListener('click', () => {
+  trails = [];
+  currentTrail = null;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+});
+
+document.getElementById('undo-btn').addEventListener('click', () => {
+  trails.pop();
+  currentTrail = null;
+  lastX = null;
+  lastY = null;
+  redrawAll();
+});
+
+document.getElementById('save-btn').addEventListener('click', () => {
+  const merge = document.createElement('canvas');
+
+  merge.width = canvas.width; merge.height = canvas.height;
+
+  const mCtx = merge.getContext('2d');
+  mCtx.save();
+  mCtx.translate(merge.width, 0);
+  mCtx.scale(-1, 1);
+  mCtx.drawImage(video, 0, 0, merge.width, merge.height);
+  mCtx.restore();
+  mCtx.drawImage(canvas, 0, 0);
+  const a = document.createElement('a');
+  a.href = merge.toDataURL('image/png');
+  a.download = 'airdraw.png';
+  a.click();
+});
+
+ // Text tool listeners
+document.getElementById('text-happy-bday').addEventListener('click', () => stampAnimatedText("Happy Birthday! 🎂"));
+document.getElementById('text-happy-diwali').addEventListener('click', () => stampAnimatedText("Happy Diwali! 🪔"));
+document.getElementById('text-eid-mubarak').addEventListener('click', () => stampAnimatedText("Eid Mubarak! 🌙"));
+document.getElementById('text-happy-suffix').addEventListener('click', () => {
+  const name = prompt("Enter a name:", "Friend");
+  stampAnimatedText(`Happy Birthday ${name}! 😊`);
+});
+
+// Start button
+document.getElementById('start-btn').addEventListener('click', () => {
+  landing.classList.add('hidden');
+  initFlashcards();
+
+  if (!camStarted) startCamera();
+});
+
+// Flashcard Logic
+const challengePool = [
+  { q: "Draw a Happy Face", a: "😊" },
+  { q: "Draw a Glowing Star", a: "⭐" },
+  { q: "Draw a Red Heart", a: "❤️" },
+  { q: "Draw a Mountain", a: "⛰️" },
+  { q: "Draw a Coffee Cup", a: "☕" },
+  { q: "Draw a Square", a: "⬜" },
+  { q: "Draw a Circle", a: "⭕" },
+  { q: "Draw a Sun", a: "☀️" },
+  { q: "Draw a Moon", a: "🌙" },
+  { q: "Draw a Tree", a: "🌳" }
+];
+let flashcards = [];
+let currentCardIdx = 0;
+const cardPanel = document.getElementById('flashcard-panel');
+const cardObj = document.getElementById('card-obj');
+const qText = document.getElementById('card-question');
+const aText = document.getElementById('card-answer');
+const cardIdxLabel = document.getElementById('card-index');
+
+document.getElementById('flashcard-toggle').addEventListener('click', function() {
+  this.classList.remove('pulse'); // Remove pulse once clicked
+  cardPanel.classList.toggle('visible');
+});
+
+cardObj.addEventListener('click', () => cardObj.classList.toggle('flipped'));
+
+function initFlashcards() {
+  // Shuffle the pool and pick a subset of 5 for this session
+  const shuffled = [...challengePool].sort(() => 0.5 - Math.random());
+  flashcards = shuffled.slice(0, 5);
+  currentCardIdx = 0;
+  updateCard();
+}
+
+function updateCard() {
+  if (flashcards.length === 0) {
+    qText.textContent = "All Challenges Done! 🎉";
+    aText.textContent = "🏆";
+    cardIdxLabel.textContent = "0 / 0";
+    document.querySelector('.card-controls').style.opacity = '0';
+    document.querySelector('.card-controls').style.pointerEvents = 'none';
+    return;
+  }
+  document.querySelector('.card-controls').style.opacity = '1';
+  document.querySelector('.card-controls').style.pointerEvents = 'all';
+  cardObj.classList.remove('flipped');
+  setTimeout(() => {
+    if (flashcards[currentCardIdx]) {
+      qText.textContent = flashcards[currentCardIdx].q;
+      aText.textContent = flashcards[currentCardIdx].a;
+      cardIdxLabel.textContent = `${currentCardIdx + 1} / ${flashcards.length}`;
+    }
+  }, 150);
+}
+
+document.getElementById('card-next').addEventListener('click', (e) => {
+  e.stopPropagation(); 
+  if (flashcards.length > 0 && currentCardIdx === flashcards.length - 1) {
+    const rect = cardObj.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const themeCols = ['#ff2d9b', '#00eaff', '#c800ff', '#aaff00', '#ffaa00', '#ffffff', '#ff3b30', '#34c759'];
+    for (let i = 0; i < 150; i++) {
+      const randomCol = themeCols[Math.floor(Math.random() * themeCols.length)];
+      const [r, g, b] = hexToRgb(randomCol);
+      particles.push({
+        x: centerX, y: centerY,
+        vx: (Math.random() - 0.5) * 25,
+        vy: (Math.random() - 0.5) * 25 - 5,
+        size: Math.random() * 8 + 3,
+        color: `rgba(${r},${g},${b},${Math.random() * 0.5 + 0.5})`,
+        life: 1.0,
+        decay: Math.random() * 0.015 + 0.005
+      });
+    }
+  }
+  currentCardIdx = (currentCardIdx + 1) % flashcards.length; 
+  updateCard();
+});
+document.getElementById('card-prev').addEventListener('click', (e) => {
+  e.stopPropagation(); currentCardIdx = (currentCardIdx - 1 + flashcards.length) % flashcards.length; updateCard();
+});
+
+document.getElementById('card-complete').addEventListener('click', (e) => {
+  e.stopPropagation();
+  // Play celebratory sound
+  successSound.currentTime = 0;
+  successSound.play().catch(err => console.log("Audio playback delayed until user interaction", err));
+  
+  const rect = cardObj.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  
+  createConfettiBurst(centerX, centerY, color);
+  
+  setTimeout(() => {
+    // Remove the completed card from the list
+    flashcards.splice(currentCardIdx, 1);
+    
+    // Adjust index if it's now out of bounds
+    if (currentCardIdx >= flashcards.length && flashcards.length > 0) {
+      currentCardIdx = 0;
+    }
+    
+    cardPanel.classList.remove('visible');
+    cardObj.classList.remove('flipped');
+    updateCard();
+  }, 1000);
+});
+
+function resizeCanvas() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width;
+  canvas.height = rect.height;
+  redrawAll();
+}
+
+function hexToRgb(hex) {
+  return [
+    parseInt(hex.slice(1,3),16),
+    parseInt(hex.slice(3,5),16),
+    parseInt(hex.slice(5,7),16)
+  ];
+}
+
+function drawGlowLine(x1,y1,x2,y2,col,size) {
+  const [r,g,b] = hexToRgb(col);
+  const s = size * 2.5;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  // outer glow
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+  ctx.strokeStyle = `rgba(${r},${g},${b},0.12)`;
+  ctx.lineWidth = s * 6; ctx.stroke();
+  // mid glow
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+  ctx.strokeStyle = `rgba(${r},${g},${b},0.3)`;
+  ctx.lineWidth = s * 3; ctx.stroke();
+  // core
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+  ctx.strokeStyle = `rgba(${r},${g},${b},1)`;
+  ctx.lineWidth = s; ctx.stroke();
+  // highlight
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+  ctx.strokeStyle = `rgba(255,255,255,0.75)`;
+  ctx.lineWidth = Math.max(0.5, s * 0.3); ctx.stroke();
+}
+
+function drawGlowText(text, x, y, col, size, time = 0, opacity = 1) {
+  const [r, g, b] = hexToRgb(col);
+  const baseSize = 26 + size * 8;
+
+  // Convert jittery "shaking" into a smooth "floating/bobbing" animation.
+  // Slower frequencies (0.001) and higher amplitudes (6-10px) make it feel intentional and magical.
+  let shakeX = time ? Math.sin(time * 0.001) * 6 : 0;
+  let shakeY = time ? Math.cos(time * 0.0012) * 10 : 0;
+  let roll = time ? Math.sin(time * 0.0008) * 0.12 : 0;
+  let scale = 1.0;
+
+  // Add animations related specifically to the text content
+  if (text.includes("Birthday")) {
+    scale = 1.0 + Math.sin(time * 0.002) * 0.06; // Gentle pulsing heartbeat
+  } else if (text.includes("Diwali")) {
+    opacity *= (0.92 + Math.sin(time * 0.005) * 0.08); // Soft candle-light flicker
+  } else if (text.includes("Eid Mubarak")) {
+    roll = time ? Math.sin(time * 0.0015) * 0.18 : 0; // Gentle crescent moon-like sway
+  }
+
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, opacity);
+  ctx.translate(x + shakeX, y + shakeY);
+  ctx.rotate(roll);
+  ctx.scale(scale, scale);
+  
+  ctx.font = `800 ${baseSize}px 'Syne', sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  
+  // Multi-layered neon glow effect
+  ctx.shadowColor = `rgba(${r},${g},${b},0.4)`;
+  ctx.shadowBlur = 40;
+  ctx.strokeStyle = `rgba(${r},${g},${b},0.2)`;
+  ctx.lineWidth = size * 6;
+  ctx.strokeText(text, 0, 0);
+
+  ctx.shadowBlur = 20;
+  ctx.strokeStyle = `rgba(${r},${g},${b},0.5)`;
+  ctx.lineWidth = size * 3;
+  ctx.strokeText(text, 0, 0);
+
+  ctx.shadowBlur = 10;
+  ctx.fillStyle = `rgba(${r},${g},${b},1)`;
+  ctx.fillText(text, 0, 0);
+
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = `rgba(255,255,255,0.8)`;
+  ctx.lineWidth = Math.max(1, size * 0.4);
+  ctx.strokeText(text, 0, 0);
+  
+  ctx.restore();
+}
+
+function redrawAll() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const now = performance.now();
+  for (const trail of trails) {
+    if (trail.type === 'text') {
+      drawGlowText(trail.text, trail.x, trail.y, trail.color, trail.size, now);
+    } else {
+      for (let i = 1; i < trail.points.length; i++) {
+        const p = trail.points[i-1], q = trail.points[i];
+        drawGlowLine(p.x,p.y,q.x,q.y,trail.color,trail.size);
+      }
+    }
+  }
+}
+
+// Continuous render loop
+let cursorX = null, cursorY = null, isDrawing = false;
+
+// Real-time motion smoothing (exponential moving average)
+// Reduces jitter without adding noticeable lag.
+let smoothX = null;
+let smoothY = null;
+const SMOOTH_ALPHA = 0.18; // Adjusted for a more fluid, ink-like feel
+
+function renderLoop() {
+
+  redrawAll();
+  updateAndDrawParticles();
+  if (cursorX !== null) {
+    const [r,g,b] = hexToRgb(color);
+    const rad = isErasing ? (20 + brushSize * 5) : 14;
+    ctx.beginPath();
+    ctx.arc(cursorX, cursorY, rad, 0, Math.PI*2);
+    ctx.strokeStyle = isErasing ? 'rgba(255,255,255,0.5)' : `rgba(${r},${g},${b},0.5)`;
+    ctx.lineWidth = 1.5;
+    if (isErasing) ctx.setLineDash([5, 5]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.beginPath();
+    ctx.arc(cursorX, cursorY, isErasing ? 2 : 4, 0, Math.PI*2);
+    ctx.fillStyle = isDrawing ? color : (isErasing ? '#fff' : 'rgba(255,255,255,0.4)');
+    ctx.fill();
+  }
+  requestAnimationFrame(renderLoop);
+}
+renderLoop();
+
+function createConfettiBurst(x, y, col) {
+  const [r, g, b] = hexToRgb(col);
+  for (let i = 0; i < 100; i++) { // more glitter
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 20, // more explosive
+      vy: (Math.random() - 0.5) * 20 - 5,
+      size: Math.random() * 8 + 3, // bigger particles
+      color: `rgba(${r},${g},${b},${Math.random() * 0.5 + 0.5})`,
+      life: 1.0,
+      decay: Math.random() * 0.015 + 0.005 // stays longer
+    });
+  }
+}
+
+function updateAndDrawParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    ctx.save();
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.15; // Gravity
+    p.life -= p.decay;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function isIndexUp(lm) {
+  // More forgiving gesture detection to reduce flicker when hand moves slightly.
+  // - Index tip (8) should be above index PIP (6)
+  // - Middle finger should be folded enough (tip (12) not too high)
+  
+  // Added a verticality check to ensure the hand is relatively upright
+  const indexUp = lm[8].y < lm[6].y - 0.03;
+  const middleDown = lm[12].y > lm[9].y + 0.02; // Check against knuckle for better folding detection
+  
+  return indexUp && middleDown;
+}
+
+function isPeaceSign(lm) {
+  // Index and Middle fingers up, others folded
+  const indexUp = lm[8].y < lm[6].y - 0.03;
+  const middleUp = lm[12].y < lm[10].y - 0.03;
+  const ringDown = lm[16].y > lm[14].y + 0.02;
+  return indexUp && middleUp && ringDown;
+}
+
+function isPinching(lm) {
+  // Distance between Thumb Tip (4) and Index Tip (8)
+  const dist = Math.hypot(lm[8].x - lm[4].x, lm[8].y - lm[4].y);
+  return dist < 0.04; // Threshold for a pinch gesture
+}
+
+function isSizeGesture(lm) {
+  // Index, Middle, and Ring fingers are up. 
+  // Distinct from Peace Sign (Index+Middle) and Drawing (Index only).
+  const indexUp = lm[8].y < lm[6].y - 0.03;
+  const middleUp = lm[12].y < lm[10].y - 0.03;
+  const ringUp = lm[16].y < lm[14].y - 0.03;
+  return indexUp && middleUp && ringUp;
+}
+
+// Debounce to avoid rapid start/stop due to landmark jitter.
+// Needs a few consecutive "on" frames to start drawing,
+// and a few consecutive "off" frames to stop drawing.
+let drawOnStreak = 0;
+let drawOffStreak = 0;
+// Extra smoothing: reduces start/stop flicker so drawing feels steadier.
+const DRAW_ON_FRAMES = 3; 
+const DRAW_OFF_FRAMES = 5;
+
+
+function startCamera() {
+  camStarted = true;
+
+  navigator.mediaDevices.getUserMedia({ video: { facingMode:'user', width:1280, height:720 }, audio:false })
+    .then(stream => {
+      video.srcObject = stream;
+      video.onloadedmetadata = () => {
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        const hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+        hands.setOptions({ maxNumHands:1, modelComplexity:1, minDetectionConfidence:0.75, minTrackingConfidence:0.65 });
+        hands.onResults(onResults);
+
+        const camera = new Camera(video, {
+          onFrame: async () => { await hands.send({ image: video }); },
+          width: 1280, height: 720
+        });
+        camera.start();
+        statusText.textContent = 'Show your hand';
+        dot.className = 'dot-indicator';
+      };
+    })
+    .catch(() => {
+      statusText.textContent = 'Camera access denied';
+    });
+}
+
+function stampAnimatedText(text) {
+  if (cursorX === null || cursorY === null) return;
+
+  // Create a short-lived animation by stamping multiple frames into the main canvas.
+  const frames = 12;
+  const start = performance.now();
+  const x = cursorX;
+  const y = cursorY;
+
+  // Use current color/size as style hints
+  const [r,g,b] = hexToRgb(color);
+  const s = brushSize;
+
+  const drawFrame = (t) => {
+    const elapsed = t - start;
+    const p = Math.min(1, elapsed / 600);
+
+    redrawAll();
+
+    // Entrance "Shake & Roll" logic
+    const wobble = (1 - p) * 35; // Start with a larger, more impactful movement
+    const dx = Math.sin(p * Math.PI * 4) * wobble; // Fewer cycles (4 vs 10) makes it smoother
+    const dy = Math.cos(p * Math.PI * 3) * wobble;
+    const roll = Math.sin(p * Math.PI) * (1 - p) * 1.5; // Pronounced single-roll entrance
+
+    // Slight scale-in effect
+    const scale = 0.9 + 0.25 * p;
+    
+    ctx.save();
+    ctx.translate(x + dx, y + dy);
+    ctx.rotate(roll);
+    ctx.scale(scale, scale);
+    drawGlowText(text, 0, 0, color, s, 0, p);
+    ctx.restore();
+
+    // Sparkle dots
+    for (let i = 0; i < 10; i++) {
+      const a = i * 0.628;
+      const rr = (10 + i) * p;
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(${r},${g},${b},0.9)`;
+      ctx.arc(x + Math.cos(a) * rr, y + Math.sin(a) * rr * 0.6, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (p < 1) requestAnimationFrame(drawFrame);
+  };
+
+  requestAnimationFrame(drawFrame);
+
+  setTimeout(() => {
+    trails.push({ type: 'text', text, x, y, color, size: s });
+    createConfettiBurst(x, y, color);
+  }, 610);
+}
+
+function onResults(results) {
+  const W = canvas.width, H = canvas.height;
+
+
+
+  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+    const lm = results.multiHandLandmarks[0];
+
+    // 1. Calculate and Smooth Position first so gestures can use it
+    const tip = lm[8];
+    const x = (1 - tip.x) * W;
+    const y = tip.y * H;
+    if (smoothX === null || smoothY === null) {
+      smoothX = x; smoothY = y;
+    } else {
+      smoothX = SMOOTH_ALPHA * x + (1 - SMOOTH_ALPHA) * smoothX;
+      smoothY = SMOOTH_ALPHA * y + (1 - SMOOTH_ALPHA) * smoothY;
+    }
+    cursorX = smoothX; 
+    cursorY = smoothY;
+
+    // Brush Size Adjustment Gesture (Three Finger Spread)
+    if (isSizeGesture(lm)) {
+      const spread = Math.hypot(lm[8].x - lm[16].x, lm[8].y - lm[16].y);
+      // Map spread (~0.05 to 0.20) to brush size (1 to 5)
+      const newSize = Math.max(1, Math.min(5, Math.round(((spread - 0.05) / 0.15) * 4 + 1)));
+      if (newSize !== brushSize) {
+        brushSize = newSize;
+        sizeSlider.value = newSize;
+      }
+      statusText.textContent = `Adjusting Size: ${brushSize} 📏`;
+      isDrawing = false;
+      currentTrail = null;
+      lastX = null; lastY = null;
+      return; 
+    }
+
+    // Pinch to Clear Gesture
+    if (isPinching(lm)) {
+      isErasing = true;
+      statusText.textContent = 'Selective Erasing... 🧹';
+      const eraseRadius = 20 + brushSize * 5;
+      let newTrails = [];
+      trails.forEach(t => {
+        if (t.type === 'text') {
+          // Simple distance check for animated text objects
+          const dist = Math.hypot(t.x - smoothX, t.y - smoothY);
+          if (dist > eraseRadius + 40) newTrails.push(t);
+        } else {
+          let seg = [];
+          t.points.forEach(p => {
+            if (Math.hypot(p.x - smoothX, p.y - smoothY) > eraseRadius) seg.push(p);
+            else { if (seg.length > 1) newTrails.push({...t, points: [...seg]}); seg = []; }
+          });
+          if (seg.length > 1) newTrails.push({...t, points: seg});
+        }
+      });
+      trails = newTrails;
+      isDrawing = false;
+      currentTrail = null;
+      lastX = null; lastY = null;
+      return; 
+    }
+    isErasing = false;
+
+    // Peace Sign Gesture (Index + Middle Up) to cycle colors without touching
+    if (isPeaceSign(lm)) {
+      if (colorCooldown === 0) {
+        const btns = Array.from(document.querySelectorAll('.color-btn'));
+        const activeIdx = btns.findIndex(b => b.classList.contains('active'));
+        const nextIdx = (activeIdx + 1) % btns.length;
+        btns[nextIdx].click();
+        colorCooldown = 45; // ~1.5s delay before allowing next change
+        statusText.textContent = 'Color switched! 🎨';
+      }
+    }
+    if (colorCooldown > 0) colorCooldown--;
+
+    // Gesture debouncing: require a few consecutive frames before changing draw state.
+    const gestureOn = isIndexUp(lm);
+    if (gestureOn) {
+      drawOnStreak++;
+      drawOffStreak = 0;
+    } else {
+      drawOffStreak++;
+      drawOnStreak = 0;
+    }
+
+    if (!isDrawing && drawOnStreak >= DRAW_ON_FRAMES) {
+      isDrawing = true;
+      dot.className = 'dot-indicator drawing';
+      statusText.textContent = 'Drawing ✏️';
+
+      // Snap smoothing to current raw position at stroke start to prevent lag-induced line jumps
+      smoothX = x;
+      smoothY = y;
+      
+      currentTrail = { points:[{x: smoothX, y: smoothY}], color, size: brushSize };
+      trails.push(currentTrail);
+      lastX = smoothX;
+      lastY = smoothY;
+    } else if (isDrawing && drawOffStreak >= DRAW_OFF_FRAMES) {
+      isDrawing = false;
+      dot.className = 'dot-indicator active';
+      statusText.textContent = 'Hand detected ✋';
+      lastX = null;
+      lastY = null;
+      currentTrail = null;
+    }
+
+    // While drawing, append points when we have a previous point.
+    if (isDrawing) {
+      if (!currentTrail) {
+        currentTrail = { points:[{x: smoothX, y: smoothY}], color, size: brushSize };
+        trails.push(currentTrail);
+      } else {
+        // Add only if we have a previous coordinate
+        if (lastX !== null && lastY !== null) {
+          currentTrail.points.push({x: smoothX, y: smoothY});
+          drawGlowLine(lastX, lastY, smoothX, smoothY, color, brushSize);
+        } else {
+          currentTrail.points.push({x: smoothX, y: smoothY});
+        }
+      }
+      lastX = smoothX;
+      lastY = smoothY;
+    }
+  } else {
+    cursorX = null; 
+    cursorY = null;
+    smoothX = null;
+    smoothY = null;
+    isDrawing = false;
+    isErasing = false;
+    dot.className = 'dot-indicator';
+    statusText.textContent = 'Show your hand';
+    lastX = null; lastY = null;
+    currentTrail = null;
+  }
+}
+</script>
+</body>
+</html>
